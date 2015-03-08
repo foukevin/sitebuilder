@@ -2,7 +2,7 @@ package main
 
 import (
 	"bufio"
-	"fmt"
+	//"fmt"
 	"bytes"
 	"flag"
 	"github.com/russross/blackfriday"
@@ -13,6 +13,12 @@ import (
 	"sort"
 	"strings"
 )
+
+func check(e error) {
+	if e != nil {
+		panic(e)
+	}
+}
 
 var cssFile string
 var tmplFile string
@@ -39,7 +45,6 @@ const defaultTemplate = `<!DOCTYPE html>
 type BlogEntry struct {
 	Title, Date string
 	MarkdownFile string
-	Markdown string // Markdown content
 }
 
 func (e BlogEntry)Permalink() string {
@@ -50,14 +55,7 @@ func (e BlogEntry)Permalink() string {
 
 type Page struct {
 	Article *BlogEntry
-	HTMLContent template.HTML
-}
-
-func (p Page)Content() template.HTML {
-	if p.Article != nil {
-		return GetContentFromMarkdown(p.Article.MarkdownFile)
-	}
-	return p.HTMLContent
+	Content template.HTML
 }
 
 func (p Page)Date() string {
@@ -93,22 +91,18 @@ func (p Page)Permalink() string {
 	return ""
 }
 
-func GetContentFromMarkdown(filename string) template.HTML {
+func getContentFromMarkdown(filename string) template.HTML {
 	markdown, err := ioutil.ReadFile(filename)
-	if err != nil {
-		panic(err)
-	}
+	check(err)
 	return template.HTML(blackfriday.MarkdownCommon(markdown))
 }
 
-func BuildPage(page *Page, url string, tmpl *template.Template) {
+func buildPage(page *Page, url string, tmpl *template.Template) {
 	f, _ := os.Create(url)
 	defer f.Close()
 
 	err := tmpl.Execute(f, page)
-	if err!= nil {
-		panic(err)
-	}
+	check(err)
 }
 
 type ByDate []BlogEntry
@@ -121,6 +115,23 @@ func init() {
 	flag.StringVar(&cssFile, "css", "", "CCS file")
 	flag.StringVar(&tmplFile, "template", "", "HTML template file")
 	flag.StringVar(&aboutFile, "about", "", "Markdown file for about page")
+}
+
+func getMetaData(filename string) (string, string) {
+	file, err := os.Open(filename)
+		check(err)
+		defer file.Close()
+
+		scanner := bufio.NewScanner(file)
+
+		var s string
+		scanner.Scan()
+		s = scanner.Text()
+		title := strings.TrimPrefix(s, "Title:")
+		scanner.Scan()
+		s = scanner.Text()
+		date := strings.TrimPrefix(s, "Date:")
+		return title, date
 }
 
 func main() {
@@ -137,45 +148,33 @@ func main() {
 	} else {
 		htmlTemplate, err = template.New("blog").Parse(defaultTemplate)
 	}
-	if err != nil {
-		panic(err)
-	}
+	check(err)
 
 	linkTemplate, _ := template.New("links").Parse("<p><a href={{.Permalink}}>{{.Title}}</a></p>")
-	if err != nil {
-		panic(err)
-	}
+	check(err)
 
 	var entries []BlogEntry
-	files, _ := ioutil.ReadDir(articlePath)
-	for _, each := range(files) {
-		fmt.Println(each.Name())
-		markdownFile := filepath.Join(articlePath, each.Name())
 
-		file, err := os.Open(markdownFile)
-		if err != nil {
-			panic(err)
-		}
-		defer file.Close()
+	filenames, _ := filepath.Glob(filepath.Join(articlePath, "*.md"))
 
-		var s string
-		scanner := bufio.NewScanner(file)
-		scanner.Scan()
-		s = scanner.Text()
-		title := strings.TrimPrefix(s, "Title:")
-		scanner.Scan()
-		s = scanner.Text()
-		date := strings.TrimPrefix(s, "Date:")
-
+	for _, filename := range(filenames) {
+		title, date := getMetaData(filename)
 		entry := BlogEntry{
 			Date: date,
 			Title: title,
-			Markdown: "",
-			MarkdownFile: markdownFile,
+			MarkdownFile: filename,
 		}
+
+		markdown, err := ioutil.ReadFile(filename)
+		content := template.HTML(blackfriday.MarkdownCommon(markdown))
+		check(err)
+		articlePage := Page {
+			Article: &entry,
+			Content: content,
+		}
+		buildPage(&articlePage, articlePage.Permalink(), htmlTemplate)
+
 		entries = append(entries, entry)
-		articlePage := Page { Article: &entry }
-		BuildPage(&articlePage, articlePage.Permalink(), htmlTemplate)
 	}
 
 	var buf bytes.Buffer
@@ -185,13 +184,13 @@ func main() {
 	}
 
 	indexPage := Page { Article: &entries[len(entries)-1] }
-	BuildPage(&indexPage, "index.html", htmlTemplate)
+	buildPage(&indexPage, "index.html", htmlTemplate)
 
-	archivePage := Page { HTMLContent: template.HTML(buf.String()) }
-	BuildPage(&archivePage, "archives.html", htmlTemplate)
+	archivePage := Page { Content: template.HTML(buf.String()) }
+	buildPage(&archivePage, "archives.html", htmlTemplate)
 
 	if aboutFile != "" {
-		aboutPage := Page { HTMLContent: GetContentFromMarkdown(aboutFile) }
-		BuildPage(&aboutPage, "about.html", htmlTemplate)
+		aboutPage := Page { Content: getContentFromMarkdown(aboutFile) }
+		buildPage(&aboutPage, "about.html", htmlTemplate)
 	}
 }
