@@ -1,8 +1,9 @@
 package main
 
 import (
+	"bufio"
+	"fmt"
 	"bytes"
-	"encoding/csv"
 	"flag"
 	"github.com/russross/blackfriday"
 	"html/template"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 var cssFile string
@@ -35,7 +37,9 @@ const defaultTemplate = `<!DOCTYPE html>
 </html>`
 
 type BlogEntry struct {
-	Title, Date, MarkdownFile string
+	Title, Date string
+	MarkdownFile string
+	Markdown string // Markdown content
 }
 
 func (e BlogEntry)Permalink() string {
@@ -89,35 +93,6 @@ func (p Page)Permalink() string {
 	return ""
 }
 
-func LoadBlogEntries(filename string) []BlogEntry {
-	csvfile, err := os.Open(filename)
-	defer csvfile.Close()
-	if err != nil {
-		panic(err)
-	}
-
-	reader := csv.NewReader(csvfile)
-	reader.FieldsPerRecord = -1
-        rawCSVdata, err := reader.ReadAll()
-	if err != nil {
-		panic(err)
-	}
-
-	var entries []BlogEntry
-	for _, each := range rawCSVdata[1:] {
-		markdownFile := "articles/" + each[2]
-		entry := BlogEntry{
-			Date: each[0],
-			Title: each[1],
-			MarkdownFile: markdownFile,
-		}
-		entries = append(entries, entry)
-	}
-
-	sort.Sort(ByDate(entries))
-	return entries
-}
-
 func GetContentFromMarkdown(filename string) template.HTML {
 	markdown, err := ioutil.ReadFile(filename)
 	if err != nil {
@@ -150,8 +125,8 @@ func init() {
 
 func main() {
 	flag.Parse()
-	filename := flag.Arg(0)
-	if filename == "" {
+	articlePath := flag.Arg(0)
+	if articlePath == "" {
 		os.Exit(1)
 	}
 
@@ -171,11 +146,41 @@ func main() {
 		panic(err)
 	}
 
-	entries := LoadBlogEntries(filename)
-	var buf bytes.Buffer
-	for _, entry := range(entries) {
+	var entries []BlogEntry
+	files, _ := ioutil.ReadDir(articlePath)
+	for _, each := range(files) {
+		fmt.Println(each.Name())
+		markdownFile := filepath.Join(articlePath, each.Name())
+
+		file, err := os.Open(markdownFile)
+		if err != nil {
+			panic(err)
+		}
+		defer file.Close()
+
+		var s string
+		scanner := bufio.NewScanner(file)
+		scanner.Scan()
+		s = scanner.Text()
+		title := strings.TrimPrefix(s, "Title:")
+		scanner.Scan()
+		s = scanner.Text()
+		date := strings.TrimPrefix(s, "Date:")
+
+		entry := BlogEntry{
+			Date: date,
+			Title: title,
+			Markdown: "",
+			MarkdownFile: markdownFile,
+		}
+		entries = append(entries, entry)
 		articlePage := Page { Article: &entry }
 		BuildPage(&articlePage, articlePage.Permalink(), htmlTemplate)
+	}
+
+	var buf bytes.Buffer
+	sort.Sort(ByDate(entries))
+	for _, entry := range(entries) {
 		linkTemplate.Execute(&buf, entry)
 	}
 
