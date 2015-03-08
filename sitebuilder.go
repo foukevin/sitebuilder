@@ -12,22 +12,81 @@ import (
 	"sort"
 )
 
-type Page struct {
-	Title, Date, Permalink, Latest string
-	IsArticle bool
-	Content template.HTML
-}
+var cssFile string
+var tmplFile string
+var aboutFile string
+const defaultTemplate = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+{{with .CSS}}<link rel="stylesheet" type="text/css" href={{.}}/>{{end}}
+</head>
+<body>
+<div>
+<a href="index.html">home</a>
+<a href="archives.html">archives</a>
+{{if .HasAboutPage}}<a href="about.html">about</a>{{end}}
+<div>
+{{with .Title}}<h1>{{.}}</h1>{{end}}
+{{if .IsArticle}}<p>{{.Date}}, <a href={{.Permalink}}>permalink</a></p>{{end}}
+{{.Content}}
+</div>
+</body>
+</html>`
 
 type BlogEntry struct {
-	Title, Date string
-	Permalink string
-	MarkdownFile string
+	Title, Date, MarkdownFile string
 }
 
-func PageName(filename string) string {
-	var extension = filepath.Ext(filename)
-	var htmlFile = filepath.Base(filename)
+func (e BlogEntry)Permalink() string {
+	extension := filepath.Ext(e.MarkdownFile)
+	htmlFile := filepath.Base(e.MarkdownFile)
 	return htmlFile[0:len(htmlFile)-len(extension)] + ".html"
+}
+
+type Page struct {
+	Article *BlogEntry
+	HTMLContent template.HTML
+}
+
+func (p Page)Content() template.HTML {
+	if p.Article != nil {
+		return GetContentFromMarkdown(p.Article.MarkdownFile)
+	}
+	return p.HTMLContent
+}
+
+func (p Page)Date() string {
+	if p.Article != nil {
+		return p.Article.Date
+	}
+	return ""
+}
+
+func (p Page)Title() string {
+	if p.Article != nil {
+		return p.Article.Title
+	}
+	return ""
+}
+
+func (p Page)IsArticle() bool {
+	return p.Article != nil
+}
+
+func (p Page)HasAboutPage() bool {
+	return aboutFile != ""
+}
+
+func (p Page)CSS() string {
+	return cssFile
+}
+
+func (p Page)Permalink() string {
+	if (p.Article != nil) {
+		return p.Article.Permalink()
+	}
+	return ""
 }
 
 func LoadBlogEntries(filename string) []BlogEntry {
@@ -51,11 +110,11 @@ func LoadBlogEntries(filename string) []BlogEntry {
 			Date: each[0],
 			Title: each[1],
 			MarkdownFile: markdownFile,
-			Permalink: PageName(markdownFile),
 		}
 		entries = append(entries, entry)
 	}
 
+	sort.Sort(ByDate(entries))
 	return entries
 }
 
@@ -67,8 +126,8 @@ func GetContentFromMarkdown(filename string) template.HTML {
 	return template.HTML(blackfriday.MarkdownCommon(markdown))
 }
 
-func BuildPage(page *Page, tmpl *template.Template) {
-	f, _ := os.Create(page.Permalink)
+func BuildPage(page *Page, url string, tmpl *template.Template) {
+	f, _ := os.Create(url)
 	defer f.Close()
 
 	err := tmpl.Execute(f, page)
@@ -83,43 +142,51 @@ func (a ByDate) Len() int { return len(a) }
 func (a ByDate) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a ByDate) Less(i, j int) bool { return a[i].Date < a[j].Date }
 
+func init() {
+	flag.StringVar(&cssFile, "css", "", "CCS file")
+	flag.StringVar(&tmplFile, "template", "", "HTML template file")
+	flag.StringVar(&aboutFile, "about", "", "Markdown file for about page")
+}
+
 func main() {
 	flag.Parse()
 	filename := flag.Arg(0)
+	if filename == "" {
+		os.Exit(1)
+	}
 
-	htmlTemplate, err := template.ParseFiles("templates/blog.html")
+	var htmlTemplate *template.Template
+	var err error
+	if tmplFile != "" {
+		htmlTemplate, err = template.ParseFiles(tmplFile)
+	} else {
+		htmlTemplate, err = template.New("blog").Parse(defaultTemplate)
+	}
 	if err != nil {
 		panic(err)
 	}
+
 	linkTemplate, _ := template.New("links").Parse("<p><a href={{.Permalink}}>{{.Title}}</a></p>")
 	if err != nil {
 		panic(err)
 	}
 
 	entries := LoadBlogEntries(filename)
-	sort.Sort(ByDate(entries))
-	latest := entries[len(entries)-1].Permalink
-
 	var buf bytes.Buffer
 	for _, entry := range(entries) {
-		articlePage := Page {
-			Title: entry.Title, Date: entry.Date, Latest: latest,
-			Permalink: entry.Permalink, IsArticle: true,
-			Content: GetContentFromMarkdown(entry.MarkdownFile),
-		}
-		BuildPage(&articlePage, htmlTemplate)
+		articlePage := Page { Article: &entry }
+		BuildPage(&articlePage, articlePage.Permalink(), htmlTemplate)
 		linkTemplate.Execute(&buf, entry)
 	}
 
-	archivePage := Page {
-		Title: "Archive", Latest: latest, Permalink: "archives.html",
-		IsArticle: false, Content: template.HTML(buf.String()),
-	}
-	BuildPage(&archivePage, htmlTemplate)
+	indexPage := Page { Article: &entries[len(entries)-1] }
+	BuildPage(&indexPage, "index.html", htmlTemplate)
 
-	aboutPage := Page {
-		Title: "About me", Latest: latest, Permalink: "about.html",
-		IsArticle: false, Content: GetContentFromMarkdown("articles/about.md"),
+	archivePage := Page { HTMLContent: template.HTML(buf.String()) }
+	BuildPage(&archivePage, "archives.html", htmlTemplate)
+
+	if aboutFile != "" {
+		aboutPage := Page { HTMLContent: GetContentFromMarkdown(aboutFile) }
+		BuildPage(&aboutPage, "about.html", htmlTemplate)
 	}
-	BuildPage(&aboutPage, htmlTemplate)
 }
