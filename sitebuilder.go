@@ -2,12 +2,10 @@ package main
 
 import (
 	"bufio"
-	//"fmt"
 	"bytes"
 	"flag"
 	"github.com/russross/blackfriday"
 	"html/template"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -42,6 +40,12 @@ const defaultTemplate = `<!DOCTYPE html>
 </body>
 </html>`
 
+type ByDate []BlogEntry
+
+func (a ByDate) Len() int { return len(a) }
+func (a ByDate) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a ByDate) Less(i, j int) bool { return a[i].Date < a[j].Date }
+
 type BlogEntry struct {
 	Title, Date string
 	MarkdownFile string
@@ -53,9 +57,22 @@ func (e BlogEntry)Permalink() string {
 	return htmlFile[0:len(htmlFile)-len(extension)] + ".html"
 }
 
+func (e *BlogEntry)buildPage() Page {
+	title, date, size := getMetaData(e.MarkdownFile)
+	e.Title = title
+	e.Date = date
+	page := Page {
+		Article: e,
+		Content: getContent(e.MarkdownFile, int64(size)),
+		Permalink: e.Permalink(),
+	}
+	return page
+}
+
 type Page struct {
 	Article *BlogEntry
 	Content template.HTML
+	Permalink string
 }
 
 func (p Page)Date() string {
@@ -84,54 +101,48 @@ func (p Page)CSS() string {
 	return cssFile
 }
 
-func (p Page)Permalink() string {
-	if (p.Article != nil) {
-		return p.Article.Permalink()
-	}
-	return ""
+func getMetaData(filename string) (title, date string, size int) {
+	file, err := os.Open(filename)
+	check(err)
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+
+	var s string
+	scanner.Scan()
+	s = scanner.Text()
+	size = len(s)
+	title = strings.TrimPrefix(s, "Title:")
+	scanner.Scan()
+	s = scanner.Text()
+	size += len(s)
+	date = strings.TrimPrefix(s, "Date:")
+	size += 2 // Account for linefeed
+	return
 }
 
-func getContentFromMarkdown(filename string) template.HTML {
-	markdown, err := ioutil.ReadFile(filename)
+func getContent(filename string, off int64) template.HTML {
+	file, err := os.Open(filename)
 	check(err)
+	defer file.Close()
+	file.Seek(off, 0)
+	fi, _ := file.Stat()
+	markdown := make([]byte, fi.Size() - off)
+	file.Read(markdown)
 	return template.HTML(blackfriday.MarkdownCommon(markdown))
 }
 
-func buildPage(page *Page, url string, tmpl *template.Template) {
+func writePage(page *Page, url string, tmpl *template.Template) {
 	f, _ := os.Create(url)
 	defer f.Close()
-
 	err := tmpl.Execute(f, page)
 	check(err)
 }
-
-type ByDate []BlogEntry
-
-func (a ByDate) Len() int { return len(a) }
-func (a ByDate) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a ByDate) Less(i, j int) bool { return a[i].Date < a[j].Date }
 
 func init() {
 	flag.StringVar(&cssFile, "css", "", "CCS file")
 	flag.StringVar(&tmplFile, "template", "", "HTML template file")
 	flag.StringVar(&aboutFile, "about", "", "Markdown file for about page")
-}
-
-func getMetaData(filename string) (string, string) {
-	file, err := os.Open(filename)
-		check(err)
-		defer file.Close()
-
-		scanner := bufio.NewScanner(file)
-
-		var s string
-		scanner.Scan()
-		s = scanner.Text()
-		title := strings.TrimPrefix(s, "Title:")
-		scanner.Scan()
-		s = scanner.Text()
-		date := strings.TrimPrefix(s, "Date:")
-		return title, date
 }
 
 func main() {
@@ -150,47 +161,34 @@ func main() {
 	}
 	check(err)
 
-	linkTemplate, _ := template.New("links").Parse("<p><a href={{.Permalink}}>{{.Title}}</a></p>")
-	check(err)
-
 	var entries []BlogEntry
 
+	// Build and write blog entries pages
 	filenames, _ := filepath.Glob(filepath.Join(articlePath, "*.md"))
-
 	for _, filename := range(filenames) {
-		title, date := getMetaData(filename)
-		entry := BlogEntry{
-			Date: date,
-			Title: title,
-			MarkdownFile: filename,
-		}
-
-		markdown, err := ioutil.ReadFile(filename)
-		content := template.HTML(blackfriday.MarkdownCommon(markdown))
-		check(err)
-		articlePage := Page {
-			Article: &entry,
-			Content: content,
-		}
-		buildPage(&articlePage, articlePage.Permalink(), htmlTemplate)
-
+		entry := BlogEntry { MarkdownFile: filename }
+		articlePage := entry.buildPage()
+		writePage(&articlePage, articlePage.Permalink, htmlTemplate)
 		entries = append(entries, entry)
 	}
 
+	// Build archives links and write archives page
+	linkTemplate, _ := template.New("links").Parse("<p><a href={{.Permalink}}>{{.Title}}</a></p>")
+	check(err)
 	var buf bytes.Buffer
 	sort.Sort(ByDate(entries))
 	for _, entry := range(entries) {
 		linkTemplate.Execute(&buf, entry)
 	}
-
-	indexPage := Page { Article: &entries[len(entries)-1] }
-	buildPage(&indexPage, "index.html", htmlTemplate)
-
 	archivePage := Page { Content: template.HTML(buf.String()) }
-	buildPage(&archivePage, "archives.html", htmlTemplate)
+	writePage(&archivePage, "archives.html", htmlTemplate)
+
+	// Get newest entry and build index page
+	indexPage := entries[len(entries)-1].buildPage()
+	writePage(&indexPage, "index.html", htmlTemplate)
 
 	if aboutFile != "" {
-		aboutPage := Page { Content: getContentFromMarkdown(aboutFile) }
-		buildPage(&aboutPage, "about.html", htmlTemplate)
+		aboutPage := Page { Content: getContent(aboutFile, 0) }
+		writePage(&aboutPage, "about.html", htmlTemplate)
 	}
 }
