@@ -151,7 +151,7 @@ func writePage(page *Page, url string, tmpl *template.Template) {
 }
 
 func init() {
-	flag.StringVar(&cssFile, "css", "", "CCS file")
+	flag.StringVar(&cssFile, "css", "", "CSS file")
 	flag.StringVar(&tmplFile, "template", "", "HTML template file")
 	flag.StringVar(&aboutFile, "about", "", "Markdown file for about page")
 
