@@ -4,12 +4,16 @@ import (
 	"bufio"
 	"bytes"
 	"flag"
-	"github.com/russross/blackfriday"
+	//"fmt"
 	"html/template"
 	"os"
+	"os/user"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
+	"github.com/gorilla/feeds"
+	"github.com/russross/blackfriday"
 )
 
 func check(e error) {
@@ -21,6 +25,11 @@ func check(e error) {
 var cssFile string
 var tmplFile string
 var aboutFile string
+var blogName string
+var blogURL string
+var authorName string
+var authorEmail string
+
 const defaultTemplate = `<!DOCTYPE html>
 <html>
 <head>
@@ -44,10 +53,11 @@ type ByDate []BlogEntry
 
 func (a ByDate) Len() int { return len(a) }
 func (a ByDate) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a ByDate) Less(i, j int) bool { return a[i].Date < a[j].Date }
+func (a ByDate) Less(i, j int) bool { return a[i].Date.Before(a[j].Date) }
 
 type BlogEntry struct {
-	Title, Date string
+	Title string
+	Date time.Time
 	MarkdownFile string
 }
 
@@ -77,7 +87,7 @@ type Page struct {
 
 func (p Page)Date() string {
 	if p.Article != nil {
-		return p.Article.Date
+		return p.Article.Date.Format("2006-01-02")
 	}
 	return ""
 }
@@ -101,7 +111,7 @@ func (p Page)CSS() string {
 	return cssFile
 }
 
-func getMetaData(filename string) (title, date string, size int) {
+func getMetaData(filename string) (title string, date time.Time, size int) {
 	file, err := os.Open(filename)
 	check(err)
 	defer file.Close()
@@ -112,11 +122,12 @@ func getMetaData(filename string) (title, date string, size int) {
 	scanner.Scan()
 	s = scanner.Text()
 	size = len(s)
-	title = strings.TrimPrefix(s, "Title:")
+	title = strings.TrimPrefix(s, "Title: ")
 	scanner.Scan()
 	s = scanner.Text()
 	size += len(s)
-	date = strings.TrimPrefix(s, "Date:")
+	s = strings.TrimPrefix(s, "Date: ")
+	date, _ = time.Parse("2006-01-02", s)
 	size += 2 // Account for linefeed
 	return
 }
@@ -143,6 +154,43 @@ func init() {
 	flag.StringVar(&cssFile, "css", "", "CCS file")
 	flag.StringVar(&tmplFile, "template", "", "HTML template file")
 	flag.StringVar(&aboutFile, "about", "", "Markdown file for about page")
+
+	user, err := user.Current()
+	check(err)
+	flag.StringVar(&blogName, "name", "", "Blog name")
+	flag.StringVar(&blogURL, "url", "", "Blog URL")
+	flag.StringVar(&authorName, "author", user.Name, "Author name")
+	flag.StringVar(&authorEmail, "email", "", "Author email")
+}
+
+func writeFeed(entries []BlogEntry) {
+	author := &feeds.Author{ authorName, authorEmail }
+	feed := &feeds.Feed{
+		Title:       "blog",
+		Link:        &feeds.Link{Href: "/"},
+		Author:      author,
+		Created:     time.Now(),
+	}
+
+	for _, entry := range(entries) {
+		link := blogURL + "/" + entry.Permalink()
+		item := &feeds.Item {
+			Title: entry.Title,
+			Link: &feeds.Link{ Href: link },
+			Author: author,
+			Created: entry.Date,
+		}
+		feed.Items = append(feed.Items, item)
+	}
+
+	atom, _ := feed.ToAtom()
+	rss, _ := feed.ToRss()
+
+	file, err := os.Create("atom.xml")
+	check(err)
+	defer file.Close()
+
+	file.WriteString(atom)
 }
 
 func main() {
@@ -191,4 +239,6 @@ func main() {
 		aboutPage := Page { Content: getContent(aboutFile, 0) }
 		writePage(&aboutPage, "about.html", htmlTemplate)
 	}
+
+	writeFeed(entries)
 }
