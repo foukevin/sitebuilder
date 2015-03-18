@@ -166,8 +166,8 @@ func init() {
 func writeFeed(entries []BlogEntry) {
 	author := &feeds.Author{ authorName, authorEmail }
 	feed := &feeds.Feed{
-		Title:       "blog",
-		Link:        &feeds.Link{Href: "/"},
+		Title:       blogName,
+		Link:        &feeds.Link{Href: blogURL},
 		Author:      author,
 		Created:     time.Now(),
 	}
@@ -188,9 +188,13 @@ func writeFeed(entries []BlogEntry) {
 
 	file, err := os.Create("atom.xml")
 	check(err)
-	defer file.Close()
-
 	file.WriteString(atom)
+	file.Close()
+
+	file, err = os.Create("rss.xml")
+	check(err)
+	file.WriteString(rss)
+	file.Close()
 }
 
 func main() {
@@ -221,7 +225,8 @@ func main() {
 	}
 
 	// Build archives links and write archives page
-	linkTemplate, _ := template.New("links").Parse("<p><a href={{.Permalink}}>{{.Title}}</a></p>")
+	const tmplString = "<p><a href={{.Permalink}}>{{.Title}}</a></p>"
+	linkTemplate, _ := template.New("links").Parse(tmplString)
 	check(err)
 	var buf bytes.Buffer
 	sort.Sort(ByDate(entries))
