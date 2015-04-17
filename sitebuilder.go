@@ -25,8 +25,8 @@ func check(e error) {
 var cssFile string
 var tmplFile string
 var aboutFile string
-var blogName string
-var blogURL string
+var siteName string
+var siteURL string
 var authorName string
 var authorEmail string
 
@@ -157,8 +157,8 @@ func init() {
 
 	user, err := user.Current()
 	check(err)
-	flag.StringVar(&blogName, "name", "", "Blog name")
-	flag.StringVar(&blogURL, "url", "", "Blog URL")
+	flag.StringVar(&siteName, "name", "", "Site name")
+	flag.StringVar(&siteURL, "url", "", "Site URL")
 	flag.StringVar(&authorName, "author", user.Name, "Author name")
 	flag.StringVar(&authorEmail, "email", "", "Author email")
 }
@@ -166,14 +166,14 @@ func init() {
 func writeFeed(entries []BlogEntry) {
 	author := &feeds.Author{ authorName, authorEmail }
 	feed := &feeds.Feed{
-		Title:       blogName,
-		Link:        &feeds.Link{Href: blogURL},
+		Title:       siteName,
+		Link:        &feeds.Link{Href: siteURL},
 		Author:      author,
 		Created:     time.Now(),
 	}
 
 	for _, entry := range(entries) {
-		link := blogURL + "/" + entry.Permalink()
+		link := siteURL + "/" + entry.Permalink()
 		item := &feeds.Item {
 			Title: entry.Title,
 			Link: &feeds.Link{ Href: link },
