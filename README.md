@@ -15,11 +15,14 @@ of markdown formatted articles. It is written in [Go](https://golang.org).
 Basic usage
 -----------------------------------------------------------------------
 
-Supposing the markdown formatted articles are located into the `./contents`
-directory, running the following command will generate a basic set of html
-pages:
+As its simplest, sitebuilder can be called with a directory containing markdown
+formatted articles:
 
-	$ sitebuilder ./contents
+	$ sitebuilder content
+
+Supposing markdown formatted articles files are located in the `./content`
+folder, the above command will build the homepage, the articles, the archives
+and the Atom and RSS feeds.
 
 A ccs file can be specified:
 
