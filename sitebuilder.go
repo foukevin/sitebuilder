@@ -42,8 +42,7 @@ const defaultTemplate = `<!DOCTYPE html>
 <a href="archives.html">archives</a>
 {{if .HasAboutPage}}<a href="about.html">about</a>{{end}}
 <div>
-{{with .Title}}<h1>{{.}}</h1>{{end}}
-{{if .IsArticle}}<p>{{.Date}}, <a href={{.Permalink}}>permalink</a></p>{{end}}
+{{if .Title}}<h1>{{.Title}}</h1><p>{{.Date}}, <a href={{.Permalink}}>permalink</a></p>{{end}}
 {{.Content}}
 </div>
 </body>
@@ -56,7 +55,7 @@ func (a ByDate) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a ByDate) Less(i, j int) bool { return a[i].Date.Before(a[j].Date) }
 
 type BlogEntry struct {
-	Title string
+	Title string // Only articles have titles
 	Date time.Time
 	MarkdownFile string
 }
@@ -97,10 +96,6 @@ func (p Page)Title() string {
 		return p.Article.Title
 	}
 	return ""
-}
-
-func (p Page)IsArticle() bool {
-	return p.Article != nil
 }
 
 func (p Page)HasAboutPage() bool {
@@ -222,6 +217,10 @@ func main() {
 		articlePage := entry.buildPage()
 		writePage(&articlePage, articlePage.Permalink, htmlTemplate)
 		entries = append(entries, entry)
+	}
+
+	if len(entries) < 1 {
+		panic("no entry")
 	}
 
 	// Build archives links and write archives page
