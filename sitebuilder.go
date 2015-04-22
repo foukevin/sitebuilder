@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"flag"
 	//"fmt"
+	"github.com/gorilla/feeds"
+	"github.com/russross/blackfriday"
 	"html/template"
 	"os"
 	"os/user"
@@ -12,8 +14,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"github.com/gorilla/feeds"
-	"github.com/russross/blackfriday"
 )
 
 func check(e error) {
@@ -22,13 +22,9 @@ func check(e error) {
 	}
 }
 
-var cssFile string
-var tmplFile string
-var aboutFile string
-var siteName string
-var siteURL string
-var authorName string
-var authorEmail string
+var cssFile, tmplFile, aboutFile string
+var siteName, siteURL string
+var authorName, authorEmail string
 
 const defaultTemplate = `<!DOCTYPE html>
 <html>
@@ -50,59 +46,59 @@ const defaultTemplate = `<!DOCTYPE html>
 
 type ByDate []BlogEntry
 
-func (a ByDate) Len() int { return len(a) }
-func (a ByDate) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a ByDate) Len() int           { return len(a) }
+func (a ByDate) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByDate) Less(i, j int) bool { return a[i].Date.Before(a[j].Date) }
 
 type BlogEntry struct {
-	Title string // Only articles have titles
-	Date time.Time
+	Title        string // Only articles have titles
+	Date         time.Time
 	MarkdownFile string
 }
 
-func (e BlogEntry)Permalink() string {
+func (e BlogEntry) Permalink() string {
 	extension := filepath.Ext(e.MarkdownFile)
 	htmlFile := filepath.Base(e.MarkdownFile)
 	return htmlFile[0:len(htmlFile)-len(extension)] + ".html"
 }
 
-func (e *BlogEntry)buildPage() Page {
+func (e *BlogEntry) buildPage() Page {
 	title, date, size := getMetaData(e.MarkdownFile)
 	e.Title = title
 	e.Date = date
-	page := Page {
-		Article: e,
-		Content: getContent(e.MarkdownFile, int64(size)),
+	page := Page{
+		Article:   e,
+		Content:   getContent(e.MarkdownFile, int64(size)),
 		Permalink: e.Permalink(),
 	}
 	return page
 }
 
 type Page struct {
-	Article *BlogEntry
-	Content template.HTML
+	Article   *BlogEntry
+	Content   template.HTML
 	Permalink string
 }
 
-func (p Page)Date() string {
+func (p Page) Date() string {
 	if p.Article != nil {
 		return p.Article.Date.Format("2006-01-02")
 	}
 	return ""
 }
 
-func (p Page)Title() string {
+func (p Page) Title() string {
 	if p.Article != nil {
 		return p.Article.Title
 	}
 	return ""
 }
 
-func (p Page)HasAboutPage() bool {
+func (p Page) HasAboutPage() bool {
 	return aboutFile != ""
 }
 
-func (p Page)CSS() string {
+func (p Page) CSS() string {
 	return cssFile
 }
 
@@ -133,7 +129,7 @@ func getContent(filename string, off int64) template.HTML {
 	defer file.Close()
 	file.Seek(off, 0)
 	fi, _ := file.Stat()
-	markdown := make([]byte, fi.Size() - off)
+	markdown := make([]byte, fi.Size()-off)
 	file.Read(markdown)
 	return template.HTML(blackfriday.MarkdownCommon(markdown))
 }
@@ -159,20 +155,20 @@ func init() {
 }
 
 func writeFeed(entries []BlogEntry) {
-	author := &feeds.Author{ authorName, authorEmail }
+	author := &feeds.Author{authorName, authorEmail}
 	feed := &feeds.Feed{
-		Title:       siteName,
-		Link:        &feeds.Link{Href: siteURL},
-		Author:      author,
-		Created:     time.Now(),
+		Title:   siteName,
+		Link:    &feeds.Link{Href: siteURL},
+		Author:  author,
+		Created: time.Now(),
 	}
 
-	for _, entry := range(entries) {
+	for _, entry := range entries {
 		link := siteURL + "/" + entry.Permalink()
-		item := &feeds.Item {
-			Title: entry.Title,
-			Link: &feeds.Link{ Href: link },
-			Author: author,
+		item := &feeds.Item{
+			Title:   entry.Title,
+			Link:    &feeds.Link{Href: link},
+			Author:  author,
 			Created: entry.Date,
 		}
 		feed.Items = append(feed.Items, item)
@@ -212,8 +208,8 @@ func main() {
 
 	// Build and write blog entries pages
 	filenames, _ := filepath.Glob(filepath.Join(articlePath, "*.md"))
-	for _, filename := range(filenames) {
-		entry := BlogEntry { MarkdownFile: filename }
+	for _, filename := range filenames {
+		entry := BlogEntry{MarkdownFile: filename}
 		articlePage := entry.buildPage()
 		writePage(&articlePage, articlePage.Permalink, htmlTemplate)
 		entries = append(entries, entry)
@@ -229,10 +225,10 @@ func main() {
 	check(err)
 	var buf bytes.Buffer
 	sort.Sort(ByDate(entries))
-	for _, entry := range(entries) {
+	for _, entry := range entries {
 		linkTemplate.Execute(&buf, entry)
 	}
-	archivePage := Page { Content: template.HTML(buf.String()) }
+	archivePage := Page{Content: template.HTML(buf.String())}
 	writePage(&archivePage, "archives.html", htmlTemplate)
 
 	// Get newest entry and build index page
@@ -240,7 +236,7 @@ func main() {
 	writePage(&indexPage, "index.html", htmlTemplate)
 
 	if aboutFile != "" {
-		aboutPage := Page { Content: getContent(aboutFile, 0) }
+		aboutPage := Page{Content: getContent(aboutFile, 0)}
 		writePage(&aboutPage, "about.html", htmlTemplate)
 	}
 
