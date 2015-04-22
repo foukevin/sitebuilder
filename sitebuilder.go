@@ -28,19 +28,10 @@ var authorName, authorEmail string
 
 const defaultTemplate = `<!DOCTYPE html>
 <html>
-<head>
-<meta charset="UTF-8">
-{{with .CSS}}<link rel="stylesheet" type="text/css" href={{.}}/>{{end}}
-</head>
+<head><meta charset="UTF-8">{{with .CSS}}<link rel="stylesheet" type="text/css" href={{.}}/>{{end}}</head>
 <body>
-<div>
-<a href="index.html">home</a>
-<a href="archives.html">archives</a>
-{{if .HasAboutPage}}<a href="about.html">about</a>{{end}}
-<div>
-{{if .Title}}<h1>{{.Title}}</h1><p>{{.Date}}, <a href={{.Permalink}}>permalink</a></p>{{end}}
-{{.Content}}
-</div>
+<div><a href="index.html">home</a><a href="archives.html">archives</a>{{if .HasAboutPage}}<a href="about.html">about</a>{{end}}</div>
+<div>{{if .Title}}<h1>{{.Title}}</h1><p>{{.Date}}, <a href={{.Permalink}}>permalink</a></p>{{end}} {{.Content}}</div>
 </body>
 </html>`
 
