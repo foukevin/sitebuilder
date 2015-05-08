@@ -213,10 +213,16 @@ func main() {
 	// Build archives links and write archives page
 	const tmplString = "<p><a href={{.Permalink}}>{{.Title}}</a></p>"
 	linkTemplate, _ := template.New("links").Parse(tmplString)
+	yearTemplate, _ := template.New("year").Parse("<h1>{{.}}</h1>")
 	check(err)
 	var buf bytes.Buffer
-	sort.Sort(ByDate(entries))
+	sort.Sort(sort.Reverse(ByDate(entries)))
+	year := 0
 	for _, entry := range entries {
+		if entry.Date.Year() != year {
+			year = entry.Date.Year()
+			yearTemplate.Execute(&buf, year)
+		}
 		linkTemplate.Execute(&buf, entry)
 	}
 	archivePage := Page{Content: template.HTML(buf.String())}
