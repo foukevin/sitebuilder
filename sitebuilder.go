@@ -229,7 +229,7 @@ func main() {
 	writePage(&archivePage, "archives.html", htmlTemplate)
 
 	// Get newest entry and build index page
-	indexPage := entries[len(entries)-1].buildPage()
+	indexPage := entries[0].buildPage()
 	writePage(&indexPage, "index.html", htmlTemplate)
 
 	if aboutFile != "" {
