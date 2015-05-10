@@ -22,7 +22,7 @@ func check(e error) {
 	}
 }
 
-var cssFile, tmplFile, aboutFile string
+var outputDir, cssFile, tmplFile, aboutFile string
 var siteName, siteURL string
 var authorName, authorEmail string
 
@@ -126,23 +126,10 @@ func getContent(filename string, off int64) template.HTML {
 }
 
 func writePage(page *Page, url string, tmpl *template.Template) {
-	f, _ := os.Create(url)
+	f, _ := os.Create(filepath.Join(outputDir, url))
 	defer f.Close()
 	err := tmpl.Execute(f, page)
 	check(err)
-}
-
-func init() {
-	flag.StringVar(&cssFile, "css", "", "CSS file")
-	flag.StringVar(&tmplFile, "template", "", "HTML template file")
-	flag.StringVar(&aboutFile, "about", "", "Markdown file for about page")
-
-	user, err := user.Current()
-	check(err)
-	flag.StringVar(&siteName, "name", "", "Site name")
-	flag.StringVar(&siteURL, "url", "", "Site URL")
-	flag.StringVar(&authorName, "author", user.Name, "Author name")
-	flag.StringVar(&authorEmail, "email", "", "Author email")
 }
 
 func writeFeed(entries []BlogEntry) {
@@ -168,23 +155,38 @@ func writeFeed(entries []BlogEntry) {
 	atom, _ := feed.ToAtom()
 	rss, _ := feed.ToRss()
 
-	file, err := os.Create("atom.xml")
+	file, err := os.Create(filepath.Join(outputDir, "atom.xml"))
 	check(err)
 	file.WriteString(atom)
 	file.Close()
 
-	file, err = os.Create("rss.xml")
+	file, err = os.Create(filepath.Join(outputDir, "rss.xml"))
 	check(err)
 	file.WriteString(rss)
 	file.Close()
 }
 
+func init() {
+	flag.StringVar(&outputDir, "output", "html", "Output directory")
+	flag.StringVar(&cssFile, "css", "", "CSS file")
+	flag.StringVar(&tmplFile, "template", "", "HTML template file")
+	flag.StringVar(&aboutFile, "about", "", "Markdown file for about page")
+
+	user, err := user.Current()
+	check(err)
+	flag.StringVar(&siteName, "name", "", "Site name")
+	flag.StringVar(&siteURL, "url", "", "Site URL")
+	flag.StringVar(&authorName, "author", user.Name, "Author name")
+	flag.StringVar(&authorEmail, "email", "", "Author email")
+}
+
 func main() {
 	flag.Parse()
-	articlePath := flag.Arg(0)
-	if articlePath == "" {
+	contentPath := flag.Arg(0)
+	if contentPath == "" {
 		os.Exit(1)
 	}
+	os.Mkdir(outputDir, 0755)
 
 	var htmlTemplate *template.Template
 	var err error
@@ -198,16 +200,15 @@ func main() {
 	var entries []BlogEntry
 
 	// Build and write blog entries pages
-	filenames, _ := filepath.Glob(filepath.Join(articlePath, "*.md"))
+	filenames, _ := filepath.Glob(filepath.Join(contentPath, "*.md"))
+	if len(filenames) < 1 {
+		panic("no entry")
+	}
 	for _, filename := range filenames {
 		entry := BlogEntry{MarkdownFile: filename}
 		articlePage := entry.buildPage()
 		writePage(&articlePage, articlePage.Permalink, htmlTemplate)
 		entries = append(entries, entry)
-	}
-
-	if len(entries) < 1 {
-		panic("no entry")
 	}
 
 	// Build archives links and write archives page
